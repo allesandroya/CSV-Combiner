@@ -88,12 +88,20 @@ class ColumnSelectionDialog(tk.simpledialog.Dialog):
             self.destroy()
 
 class FilterDialog(tk.simpledialog.Dialog):
+
+    def __init__(self, master, filter_column):
+        self.master = master
+        self.filter_column = filter_column
+        self.write = False
+        self.upload = False
+        super().__init__(master)
+
     def body(self, master):
         # Create a frame for the label
         label_frame = ttk.Frame(master)
         label_frame.grid(row=0, column=0, columnspan=6, pady=10, padx=10)
         
-        ttk.Label(label_frame, text="Filter values option: ").grid(row=0, column=0, pady=(0, 5))
+        ttk.Label(label_frame, text="Filter values for column " + self.filter_column + ":").grid(row=0, column=0, pady=(0, 5))
 
         self.action_var = tk.StringVar()
         write_button = ttk.Radiobutton(label_frame, text="Write Manually", variable=self.action_var, value="write")
@@ -237,7 +245,7 @@ class FileMerger:
         if not filter_option:
                  
             self.apply_filter_label.config(text="")
-            self.filter_column = None
+            self.filter_columns = None
             self.filter_values = None            
             return
 
@@ -250,31 +258,40 @@ class FileMerger:
 
             if column_dialog_result:
                 # Retrieve selected columns from the dialog
-                filter_columns = column_dialog.result
-                column_string = ', '.join(str(item) for item in filter_columns)
-                self.filter_column = column_string
-                
-                dialog = FilterDialog(self.master)
-                
-                if dialog.write:
-                    
-                    self.filter_column = column_string #int(simpledialog.askstring("Filter Column", "Enter the column number for filtering (starting from 0):"))
-                    filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
-                    self.filter_values = filter_string.split(',')
-                    self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(self.filter_values)}")
-                    
-                elif dialog.upload:
-                    filter_file_path = filedialog.askopenfilename(title="Upload Filter Values Excel File (The First Row Reads as Header)", filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv")])
+                self.filter_columns = column_dialog.result
+                # column_string = ', '.join(str(item) for item in filter_columns)
+                # self.filter_column = column_string
+                self.filter_values = []
+                self.filter_column = ""
 
-                    if filter_file_path:
-                        # Read filter values from the uploaded file
-                        filter_values_df = pd.read_excel(filter_file_path)  # Assuming it's an Excel file, adjust if it's a CSV
-                        self.filter_values = filter_values_df.iloc[:, 0].tolist()
-
-                        self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(map(str, self.filter_values))}")
+                for column in self.filter_columns:
+                    self.filter_column = column
+                
+                    dialog = FilterDialog(self.master, self.filter_column)
+                    
+                    if dialog.write:
                         
-                else:
-                    return
+                        # self.filter_column = column_string #int(simpledialog.askstring("Filter Column", "Enter the column number for filtering (starting from 0):"))
+                        filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
+                        column_filter_values = filter_string.split(',')
+                        self.filter_values.append(column_filter_values)
+                        # self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(self.filter_values)}")
+                        
+                    elif dialog.upload:
+                        filter_file_path = filedialog.askopenfilename(title="Upload Filter Values Excel File (The First Row Reads as Header)", filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv")])
+
+                        if filter_file_path:
+                            # Read filter values from the uploaded file
+                            filter_values_df = pd.read_excel(filter_file_path)  # Assuming it's an Excel file, adjust if it's a CSV
+                            column_filter_values = filter_values_df.iloc[:, 0].tolist()
+                            self.filter_values.append(column_filter_values)
+
+                            # self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(map(str, self.filter_values))}")
+                filter_text = "\n".join(f"Filter {column}: {', '.join(map(str, values))}" for column, values in zip(self.filter_columns, self.filter_values))
+                self.apply_filter_label.config(text=filter_text)
+
+            else:
+                return
                         
         except ValueError as ve:
             messagebox.showerror("Error", "Please enter a valid column number and filter values.")
@@ -495,9 +512,11 @@ class FileMerger:
                 
                 # Apply the filter if values were set
                 if self.filter_column is not None and self.filter_values:
-                    # df = df[df.iloc[:, self.filter_column].isin(self.filter_values)]
-                    self.filter_values = [value.strip() for value in self.filter_values]
-                    df = df[df[self.filter_column].isin(self.filter_values)]
+                    for filter_column, filter_values in zip(self.filter_columns, self.filter_values):
+                            # Clean up the filter values
+                            filter_values = [value.strip() for value in filter_values]
+                            # Apply the filter to the DataFrame
+                            df = df[df[filter_column].isin(filter_values)]
                     
 
                 # Apply column keep

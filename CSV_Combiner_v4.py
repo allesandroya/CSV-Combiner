@@ -87,6 +87,38 @@ class ColumnSelectionDialog(tk.simpledialog.Dialog):
                 self.result = selected_columns
             self.destroy()
 
+class FilterDialog(tk.simpledialog.Dialog):
+    def body(self, master):
+        # Create a frame for the label
+        label_frame = ttk.Frame(master)
+        label_frame.grid(row=0, column=0, columnspan=6, pady=10, padx=10)
+        
+        ttk.Label(label_frame, text="Filter values option: ").grid(row=0, column=0, pady=(0, 5))
+
+        self.action_var = tk.StringVar()
+        write_button = ttk.Radiobutton(label_frame, text="Write Manually", variable=self.action_var, value="write")
+        write_button.grid(row=1, column=0)
+
+        upload_button = ttk.Radiobutton(label_frame, text="Upload File", variable=self.action_var, value="upload")
+        upload_button.grid(row=2, column=0)
+
+        return write_button
+
+    def apply(self):
+        selected_action = self.action_var.get()
+        if selected_action == "write":
+            self.write = True
+            self.upload = False
+        elif selected_action == "upload":
+            self.write = False
+            self.upload = True
+        else:
+            self.write = False
+            self.upload = False
+            
+        return True
+
+
 
 class FileMerger:
     def __init__(self, master):
@@ -220,11 +252,30 @@ class FileMerger:
                 # Retrieve selected columns from the dialog
                 filter_columns = column_dialog.result
                 column_string = ', '.join(str(item) for item in filter_columns)
+                self.filter_column = column_string
+                
+                dialog = FilterDialog(self.master)
+                
+                if dialog.write:
+                    
+                    self.filter_column = column_string #int(simpledialog.askstring("Filter Column", "Enter the column number for filtering (starting from 0):"))
+                    filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
+                    self.filter_values = filter_string.split(',')
+                    self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(self.filter_values)}")
+                    
+                elif dialog.upload:
+                    filter_file_path = filedialog.askopenfilename(title="Upload Filter Values Excel File (The First Row Reads as Header)", filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv")])
 
-                self.filter_column = column_string #int(simpledialog.askstring("Filter Column", "Enter the column number for filtering (starting from 0):"))
-                filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
-                self.filter_values = filter_string.split(',')
-                self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(self.filter_values)}")
+                    if filter_file_path:
+                        # Read filter values from the uploaded file
+                        filter_values_df = pd.read_excel(filter_file_path)  # Assuming it's an Excel file, adjust if it's a CSV
+                        self.filter_values = filter_values_df.iloc[:, 0].tolist()
+
+                        self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(map(str, self.filter_values))}")
+                        
+                else:
+                    return
+                        
         except ValueError as ve:
             messagebox.showerror("Error", "Please enter a valid column number and filter values.")
     
@@ -322,7 +373,6 @@ class FileMerger:
             # Update status check label
             self.status_check_label.config(text="FS02 Folder Chosen")
             use_radiobuttons = False
-            print(self.key_column)
 
         else:
             # Update status check label if user selects "No"
@@ -418,7 +468,8 @@ class FileMerger:
         try:
             print("Processing the files...")                 
 
-            if self.status_check_label.cget("text") == "FS02 Folder Chosen":
+#             if self.status_check_label.cget("text") == "FS02 Folder Chosen":
+            if self.fs02_data is None and self.status_check_label.cget("text") == "FS02 Folder Chosen":
 
                 # Load FS02 files
                 self.fs02_data = self.load_fs02_files(self.fs02_folder)              
@@ -472,7 +523,6 @@ class FileMerger:
             
             if self.status_check_label.cget("text") == "FS02 Folder Chosen":
                 print("Looking Up Policy Status...")
-                print(self.key_column)
                 # Adjust data types
 
                 combined_df[self.key_column] = combined_df[self.key_column].astype(str)
@@ -561,7 +611,6 @@ class FileMerger:
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-	
 
 if __name__ == "__main__":
     root = tk.Tk()

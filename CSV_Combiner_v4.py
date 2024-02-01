@@ -97,6 +97,7 @@ class FilterDialog(tk.simpledialog.Dialog):
         self.min_value = False
         self.max_value = False
         self.between_values = False
+        self.selected_action = None
         super().__init__(master)
 
     def body(self, master):
@@ -126,6 +127,7 @@ class FilterDialog(tk.simpledialog.Dialog):
 
     def apply(self):
         selected_action = self.action_var.get()
+        self.selected_action = selected_action
         if selected_action == "write":
             self.write = True
             self.upload = False
@@ -254,7 +256,7 @@ class FileMerger:
         self.groupby_text = None
         self.sum_text = None
         self.key_column = None
-        self.filter_dialog = FilterDialog(self.master, self.filter_column)
+        self.filter_dialog = None
 
         
     def set_directory(self):
@@ -291,23 +293,23 @@ class FileMerger:
             # Create and show the column selection dialog
             column_dialog = ColumnSelectionDialog(self.master, selected_df=filter_df, title= "Select Column to Filter")
             # Wait for the dialog to close
-            column_dialog_result = column_dialog.result
-            self.filter_dialog = column_dialog_result
-
+            column_dialog_result = column_dialog.result         
+            
             if column_dialog_result:
+
 
                 def convert_bound_to_correct_type(bound):
                     try:
                         # Try to convert to int
-                        return int(bound)
+                        return pd.to_numeric(bound)
                     except ValueError:
                         pass
 
-                    try:
-                        # Try to convert to float
-                        return float(bound)
-                    except ValueError:
-                        pass
+                    # try:
+                    #     # Try to convert to float
+                    #     return float(bound)
+                    # except ValueError:
+                    #     pass
 
                     try:
                         # Try to convert to date
@@ -324,11 +326,14 @@ class FileMerger:
                 # self.filter_column = column_string
                 self.filter_values = []
                 self.filter_column = ""
+                self.filter_dialog = []
 
                 for column in self.filter_columns:
                     self.filter_column = column
 
                     dialog = FilterDialog(self.master, self.filter_column)
+                    self.filter_dialog.append(dialog.selected_action)
+
 
                     if dialog.write:
                         filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
@@ -362,8 +367,7 @@ class FileMerger:
                         lower_bound = convert_bound_to_correct_type(lower_bound)
                         upper_bound = convert_bound_to_correct_type(upper_bound)
                         self.filter_values.append((lower_bound, upper_bound))
-
-
+                    
                 
                 filter_text = "\n".join(f"Filter {column}: {', '.join(map(str, values)) if isinstance(values, list) else str(values)}" for column, values in zip(self.filter_columns, self.filter_values))
                 self.apply_filter_label.config(text=filter_text)
@@ -590,22 +594,66 @@ class FileMerger:
                 
                 # Apply the filter if values were set
                 if self.filter_column is not None and self.filter_values:
-                    for filter_column, filter_values in zip(self.filter_columns, self.filter_values):
-                        if isinstance(filter_values, list):
+
+                    for filter_column, filter_values, filter_dialog in zip(self.filter_columns, self.filter_values, self.filter_dialog):
+                        
+                        if filter_dialog == "write" or filter_dialog == "upload":
                             # Clean up the filter values
                             filter_values = [value.strip() for value in filter_values]
                             # Apply the filter to the DataFrame
                             df = df[df[filter_column].isin(filter_values)]
-                        elif isinstance(filter_values, tuple) and len(filter_values) == 2:
+                            
+                        elif filter_dialog == "between_values":
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass 
                             # Apply the range filter to the DataFrame
                             df = df[(df[filter_column] >= filter_values[0]) & (df[filter_column] <= filter_values[1])]
-                        else:
-                            if self.filter_dialog.min_value:
-                                # Apply the lower bound filter to the DataFrame
-                                df = df[df[filter_column] >= filter_values]
-                            elif self.filter_dialog.max_value:
-                                # Apply the upper bound filter to the DataFrame
-                                df = df[df[filter_column] <= filter_values]
+                            
+                        elif filter_dialog == "min_value":    
+      
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass           
+          
+                            # Apply the lower bound filter to the DataFrame
+                            df = df[df[filter_column] >= filter_values]
+                        elif filter_dialog == "max_value":
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass 
+                            # Apply the upper bound filter to the DataFrame
+                            df = df[df[filter_column] <= filter_values]
                     
 
                 # Apply column keep

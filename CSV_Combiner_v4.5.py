@@ -94,6 +94,10 @@ class FilterDialog(tk.simpledialog.Dialog):
         self.filter_column = filter_column
         self.write = False
         self.upload = False
+        self.min_value = False
+        self.max_value = False
+        self.between_values = False
+        self.selected_action = None
         super().__init__(master)
 
     def body(self, master):
@@ -104,26 +108,57 @@ class FilterDialog(tk.simpledialog.Dialog):
         ttk.Label(label_frame, text="Filter values for column " + self.filter_column + ":").grid(row=0, column=0, pady=(0, 5))
 
         self.action_var = tk.StringVar()
-        write_button = ttk.Radiobutton(label_frame, text="Write Manually", variable=self.action_var, value="write")
+        write_button = ttk.Radiobutton(label_frame, text="String Filter: Write Manually", variable=self.action_var, value="write")
         write_button.grid(row=1, column=0)
 
-        upload_button = ttk.Radiobutton(label_frame, text="Upload File", variable=self.action_var, value="upload")
+        upload_button = ttk.Radiobutton(label_frame, text="String Filter: Upload File", variable=self.action_var, value="upload")
         upload_button.grid(row=2, column=0)
+
+        upload_button = ttk.Radiobutton(label_frame, text="Num / Date Filter: Min Value", variable=self.action_var, value="min_value")
+        upload_button.grid(row=3, column=0)
+
+        upload_button = ttk.Radiobutton(label_frame, text="Num / Date Filter: Max Value", variable=self.action_var, value="max_value")
+        upload_button.grid(row=4, column=0)
+
+        upload_button = ttk.Radiobutton(label_frame, text="Num / Date Filter: Range Value", variable=self.action_var, value="between_values")
+        upload_button.grid(row=5, column=0)
 
         return write_button
 
     def apply(self):
         selected_action = self.action_var.get()
+        self.selected_action = selected_action
         if selected_action == "write":
             self.write = True
             self.upload = False
+            self.min_value = False
+            self.max_value = False
+            self.between_values = False
         elif selected_action == "upload":
             self.write = False
             self.upload = True
-        else:
+            self.min_value = False
+            self.max_value = False
+            self.between_values = False
+        elif selected_action == "min_value":
             self.write = False
             self.upload = False
-            
+            self.min_value = True
+            self.max_value = False
+            self.between_values = False
+        elif selected_action == "max_value":
+            self.write = False
+            self.upload = False
+            self.min_value = False
+            self.max_value = True
+            self.between_values = False
+        elif selected_action == "between_values":
+            self.write = False
+            self.upload = False
+            self.min_value = False
+            self.max_value = False
+            self.between_values = True
+                
         return True
     
 class JoinDialog(tk.simpledialog.Dialog):
@@ -193,7 +228,7 @@ class FileMerger:
             ttk.Label(master, text=text).grid(row=index, column=0, columnspan=6, sticky='w', pady=5, padx=20)
 
         # Directory Button and Label
-        self.choose_directory_button = ttk.Button(master, text="Choose Your FS Folder", command=self.set_directory)
+        self.choose_directory_button = ttk.Button(master, text="Choose Your CSV Folder", command=self.set_directory)
         self.choose_directory_button.grid(row=20, column=0, pady=5, padx=5,sticky="w")
         self.directory_label = ttk.Label(master, text="")
         self.directory_label.grid(row=25, column=0, padx=20, sticky="w")
@@ -262,6 +297,7 @@ class FileMerger:
         self.right_df = None
         self.right_return = None
         self.join_option = None
+        self.filter_dialog = None
 
 
         
@@ -297,29 +333,53 @@ class FileMerger:
             # Create and show the column selection dialog
             column_dialog = ColumnSelectionDialog(self.master, selected_df=filter_df, title= "Select Column to Filter")
             # Wait for the dialog to close
-            column_dialog_result = column_dialog.result
-
+            column_dialog_result = column_dialog.result         
+            
             if column_dialog_result:
+
+
+                def convert_bound_to_correct_type(bound):
+                    try:
+                        # Try to convert to int
+                        return pd.to_numeric(bound)
+                    except ValueError:
+                        pass
+
+                    # try:
+                    #     # Try to convert to float
+                    #     return float(bound)
+                    # except ValueError:
+                    #     pass
+
+                    try:
+                        # Try to convert to date
+                        return pd.to_datetime(bound)
+                    except ValueError:
+                        pass
+
+                    # If all else fails, return as string
+                    return bound
+                
                 # Retrieve selected columns from the dialog
                 self.filter_columns = column_dialog.result
                 # column_string = ', '.join(str(item) for item in filter_columns)
                 # self.filter_column = column_string
                 self.filter_values = []
                 self.filter_column = ""
+                self.filter_dialog = []
 
                 for column in self.filter_columns:
                     self.filter_column = column
-                
+
                     dialog = FilterDialog(self.master, self.filter_column)
-                    
+                    self.filter_dialog.append(dialog.selected_action)
+
+
                     if dialog.write:
-                        
-                        # self.filter_column = column_string #int(simpledialog.askstring("Filter Column", "Enter the column number for filtering (starting from 0):"))
                         filter_string = simpledialog.askstring("Filter Values", "Enter filter values separated by commas:")
                         column_filter_values = filter_string.split(',')
                         self.filter_values.append(column_filter_values)
-                        # self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(self.filter_values)}")
-                        
+
                     elif dialog.upload:
                         filter_file_path = filedialog.askopenfilename(title="Upload Filter Values Excel File (The First Row Reads as Header)", filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv")])
 
@@ -327,17 +387,37 @@ class FileMerger:
                             # Read filter values from the uploaded file
                             filter_values_df = pd.read_excel(filter_file_path)  # Assuming it's an Excel file, adjust if it's a CSV
                             column_filter_values = filter_values_df.iloc[:, 0].tolist()
-                            self.filter_values.append(column_filter_values)
+                            self.filter_values.append(column_filter_values)                       
 
-                            # self.apply_filter_label.config(text=f"Filter in column {self.filter_column}: \n{', '.join(map(str, self.filter_values))}")
-                filter_text = "\n".join(f"Filter {column}: {', '.join(map(str, values))}" for column, values in zip(self.filter_columns, self.filter_values))
+                    elif dialog.min_value:
+                        lower_bound = simpledialog.askstring("Filter Values", f"Enter the lower bound for {column}:")
+                        lower_bound = convert_bound_to_correct_type(lower_bound)
+                        column_filter_values = lower_bound
+                        self.filter_values.append(column_filter_values)
+
+                    elif dialog.max_value:
+                        upper_bound = simpledialog.askstring("Filter Values", f"Enter the upper bound for {column}:")
+                        upper_bound = convert_bound_to_correct_type(upper_bound)
+                        column_filter_values = upper_bound
+                        self.filter_values.append(column_filter_values)
+
+                    elif dialog.between_values:
+                        lower_bound = simpledialog.askstring("Filter Values", f"Enter the lower bound for {column}:")
+                        upper_bound = simpledialog.askstring("Filter Values", f"Enter the upper bound for {column}:")
+                        lower_bound = convert_bound_to_correct_type(lower_bound)
+                        upper_bound = convert_bound_to_correct_type(upper_bound)
+                        self.filter_values.append((lower_bound, upper_bound))
+                    
+                
+                filter_text = "\n".join(f"Filter {column}: {', '.join(map(str, values)) if isinstance(values, list) else str(values)}" for column, values in zip(self.filter_columns, self.filter_values))
                 self.apply_filter_label.config(text=filter_text)
 
             else:
-                return
+                return                
                         
         except ValueError as ve:
             messagebox.showerror("Error", "Please enter a valid column number and filter values.")
+    
     
     def keep_columns(self):
         if not self.directory:
@@ -604,11 +684,66 @@ class FileMerger:
                 
                 # Apply the filter if values were set
                 if self.filter_column is not None and self.filter_values:
-                    for filter_column, filter_values in zip(self.filter_columns, self.filter_values):
+
+                    for filter_column, filter_values, filter_dialog in zip(self.filter_columns, self.filter_values, self.filter_dialog):
+                        
+                        if filter_dialog == "write" or filter_dialog == "upload":
                             # Clean up the filter values
                             filter_values = [value.strip() for value in filter_values]
                             # Apply the filter to the DataFrame
                             df = df[df[filter_column].isin(filter_values)]
+                            
+                        elif filter_dialog == "between_values":
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass 
+                            # Apply the range filter to the DataFrame
+                            df = df[(df[filter_column] >= filter_values[0]) & (df[filter_column] <= filter_values[1])]
+                            
+                        elif filter_dialog == "min_value":    
+      
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass           
+          
+                            # Apply the lower bound filter to the DataFrame
+                            df = df[df[filter_column] >= filter_values]
+                        elif filter_dialog == "max_value":
+                            try:
+                                # Try to convert to float
+                                df[filter_column] = df[filter_column].astype('float64')
+                            except ValueError:
+                                try:
+                                    # Try to convert to int
+                                    df[filter_column] = df[filter_column].astype('int64')
+                                except ValueError:
+                                    try:
+                                        # Try to convert to date
+                                        df[filter_column] = pd.to_datetime(df[filter_column])
+                                    except ValueError:
+                                        pass 
+                            # Apply the upper bound filter to the DataFrame
+                            df = df[df[filter_column] <= filter_values]
                     
 
                 # Apply column keep

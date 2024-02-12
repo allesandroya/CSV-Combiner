@@ -58,6 +58,13 @@ class ColumnSelectionDialog(tk.simpledialog.Dialog):
         
         self.selected_var = tk.StringVar()
         self.selected_var.set(None)   
+
+        # Create "Check All" checkbox
+        self.all_var = tk.BooleanVar()
+        self.all_var.trace('w', self.check_all)
+        self.all_check = tk.Checkbutton(self, text="Check All", variable=self.all_var)
+        self.all_check.pack()
+
         
         for column in columns:
             if self.use_radiobuttons:
@@ -73,6 +80,12 @@ class ColumnSelectionDialog(tk.simpledialog.Dialog):
 
                 
         return self.scrollable_frame  # initial focus
+    
+    def check_all(self, *args):
+        # If "Check All" is selected, select all checkboxes, otherwise deselect all
+        is_checked = self.all_var.get()
+        for var in self.column_vars:
+            var.set(is_checked)
 
     def apply(self):
         if self.df is not None:

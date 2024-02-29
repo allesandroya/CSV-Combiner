@@ -573,7 +573,8 @@ class FileMerger:
             messagebox.showwarning("Warning", "Please choose both the FS Folder and Output Directory.")
             return
             
-        output_file_name = simpledialog.askstring("Output File Name", "Please enter the output file name:", initialvalue="Combined.csv")
+        output_file_name = simpledialog.askstring("Output File Name", "Please enter the output file name:", initialvalue="Combined")
+        output_file_name = output_file_name + ".csv"
         if not output_file_name:
             return
         
@@ -785,3 +786,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = FileMerger(root)
     root.mainloop()
+# %%

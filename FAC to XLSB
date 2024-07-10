@@ -1,0 +1,42 @@
+import csv
+import pandas as pd
+
+# Define the paths
+fac_file_path = r'C:\To Do\ACC_CONTRACT.fac'
+csv_file_path = r'C:\To Do\ACC_CONTRACT.csv'
+
+# Open the FAC file in read mode and the CSV file in write mode
+with open(fac_file_path, 'r') as fac_file, open(csv_file_path, 'w', newline='') as csv_file:
+    # Create a CSV writer object
+    csv_writer = csv.writer(csv_file)
+
+    # Read each line from the FAC file and write it to the CSV file
+    for line in fac_file:
+        # Split the line by whitespace or other delimiter if needed
+        # For example, if the fields are separated by spaces:
+        # row = line.strip().split()
+        
+        # Write the row to the CSV file
+        csv_writer.writerow([line.strip()])  # Write a single cell in each row
+        
+
+# Read the CSV file starting from row 4 and split the data with comma delimiter
+data = []
+with open(csv_file_path, 'r', newline='') as csv_file:
+    # Skip the first three rows
+    for _ in range(3):
+        next(csv_file)
+    
+    # Read and split the data in row 4
+    header_row = next(csv_file).strip().split(',')
+    data.append(header_row)
+
+    # Read and split the remaining rows
+    for line in csv_file:
+        row_data = line.strip().split(',')
+        data.append(row_data)
+
+# Create a DataFrame from the data, set the first row as header, and ignore index
+df = pd.DataFrame(data[1:], columns=data[0])
+
+df.to_csv(csv_file_path)

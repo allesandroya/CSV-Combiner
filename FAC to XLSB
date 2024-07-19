@@ -1,42 +1,105 @@
 import csv
+import re
 import pandas as pd
+import pandas as pd
+import os
+import win32com.client as win32
+from tqdm import tqdm
+import time
+from tkinter import filedialog
+from tkinter import Tk
+
+def select_fac_file():
+    fac_path = filedialog.askopenfilename(title="Select the FAC file", filetypes=[("FAC Files", "*.fac")])
+    if fac_path:
+        directory_path = os.path.dirname(fac_path)
+        return fac_path, directory_path
+    else:
+        print("cancelled")
+        return
 
 # Define the paths
-fac_file_path = r'C:\To Do\ACC_CONTRACT.fac'
-csv_file_path = r'C:\To Do\ACC_CONTRACT.csv'
+fac_file_path, directory_path = select_fac_file()
+print("loading the fac file...")
+base_name = os.path.splitext(os.path.basename(fac_file_path))[0]
+csv_file_path = os.path.join(directory_path, f'{base_name}.csv')
 
-# Open the FAC file in read mode and the CSV file in write mode
-with open(fac_file_path, 'r') as fac_file, open(csv_file_path, 'w', newline='') as csv_file:
-    # Create a CSV writer object
-    csv_writer = csv.writer(csv_file)
-
-    # Read each line from the FAC file and write it to the CSV file
-    for line in fac_file:
-        # Split the line by whitespace or other delimiter if needed
-        # For example, if the fields are separated by spaces:
-        # row = line.strip().split()
-        
-        # Write the row to the CSV file
-        csv_writer.writerow([line.strip()])  # Write a single cell in each row
-        
-
-# Read the CSV file starting from row 4 and split the data with comma delimiter
+# Read the FAC file, clean data, and write to CSV
 data = []
-with open(csv_file_path, 'r', newline='') as csv_file:
+with open(fac_file_path, 'r') as fac_file:
     # Skip the first three rows
     for _ in range(3):
-        next(csv_file)
+        next(fac_file)
     
-    # Read and split the data in row 4
-    header_row = next(csv_file).strip().split(',')
-    data.append(header_row)
+    for line in fac_file:
+        # Remove leading and trailing double quotes and commas within quotes using regex
+        cleaned_line = re.sub(r'^"|"$', '', line.strip()).split(',')
+        # Append the cleaned data to the list
+        data.append(cleaned_line)
 
-    # Read and split the remaining rows
-    for line in csv_file:
-        row_data = line.strip().split(',')
-        data.append(row_data)
+# Convert the list to DataFrame to remove the first column
+df = pd.DataFrame(data)
+# Remove the first column
+df.drop(df.columns[0], axis=1, inplace=True)
 
-# Create a DataFrame from the data, set the first row as header, and ignore index
-df = pd.DataFrame(data[1:], columns=data[0])
+# Write the cleaned DataFrame to CSV
+df.to_csv(csv_file_path, index=False, header=False)
 
-df.to_csv(csv_file_path)
+print("FAC file has been loaded to CSV.")
+
+# Path to the input CSV file and output XLSB file
+xlsb_file_path = os.path.join(directory_path, f'{base_name}.xlsb')
+temp_excel_path = os.path.join(directory_path, 'temp_output.xlsx')
+print(xlsb_file_path)
+
+# Ensure the CSV file exists
+if not os.path.exists(csv_file_path):
+    raise FileNotFoundError(f"No such file or directory: '{csv_file_path}'")
+
+print("Processing to xlsb...")
+    
+# Read the CSV file into a DataFrame
+df = pd.read_csv(csv_file_path, low_memory=False)
+  
+# Define the maximum rows per sheet
+max_rows = 1_000_000
+
+# Function to split the DataFrame into chunks
+def split_dataframe(df, chunk_size):
+    chunks = []
+    for i in range(0, df.shape[0], chunk_size):
+        chunks.append(df.iloc[i:i + chunk_size])
+    return chunks
+
+# Check the number of rows and split if necessary
+if len(df) > max_rows:
+    df_chunks = split_dataframe(df, max_rows)
+else:
+    df_chunks = [df]
+
+# Write each chunk to a separate sheet in a temporary Excel file using xlsxwriter
+with pd.ExcelWriter(temp_excel_path, engine='xlsxwriter') as writer:
+    for i, chunk in enumerate(tqdm(df_chunks, desc="Writing to Excel Binary Workbook", unit="sheet")):
+        chunk.to_excel(writer, sheet_name=f'Sheet{i+1}', index=False)
+print("Finishing the output...")
+        
+# Convert the temporary Excel file to XLSB using Excel via COM
+excel = win32.gencache.EnsureDispatch('Excel.Application')
+wb = excel.Workbooks.Open(temp_excel_path)
+wb.SaveAs(xlsb_file_path, FileFormat=50)  # 50 is the FileFormat for XLSB
+wb.Close()
+excel.Application.Quit()
+
+print("Removing the temp file...")
+# Ensure the Excel process is properly closed before attempting to delete the temp file
+time.sleep(5)
+
+# Clean up the temporary Excel file
+try:
+    os.remove(temp_excel_path)
+    os.remove(csv_file_path)
+    print("Temporary files removed successfully.")
+except PermissionError:
+    print(f"PermissionError: Could not remove temporary files. Please delete manually: {temp_excel_path}, {csv_file_path}")
+
+print("CSV has been converted to XLSB successfully.")

@@ -23,6 +23,7 @@ fac_file_path, directory_path = select_fac_file()
 print("loading the fac file...")
 base_name = os.path.splitext(os.path.basename(fac_file_path))[0]
 csv_file_path = os.path.join(directory_path, f'{base_name}.csv')
+csv_file_path = os.path.normpath(csv_file_path)
 
 # Read the FAC file, clean data, and write to CSV
 data = []
@@ -49,8 +50,8 @@ print("FAC file has been loaded to CSV.")
 
 # Path to the input CSV file and output XLSB file
 xlsb_file_path = os.path.join(directory_path, f'{base_name}.xlsb')
+xlsb_file_path = os.path.normpath(xlsb_file_path)
 temp_excel_path = os.path.join(directory_path, 'temp_output.xlsx')
-print(xlsb_file_path)
 
 # Ensure the CSV file exists
 if not os.path.exists(csv_file_path):
@@ -64,6 +65,40 @@ df = pd.read_csv(csv_file_path, low_memory=False)
 # Define the maximum rows per sheet
 max_rows = 1_000_000
 
+def save_to_xlsb(csv_file_path, xlsb_file_path):
+    # Ensure the CSV file exists
+    if not os.path.exists(csv_file_path):
+        raise FileNotFoundError(f"No such file or directory: '{csv_file_path}'")
+
+    print(f"Processing {csv_file_path} to XLSB...")
+
+    # Read the CSV file into a DataFrame
+    df = pd.read_csv(csv_file_path, low_memory=False)
+
+    # Write the DataFrame to a temporary Excel file using xlsxwriter
+    temp_excel_path = csv_file_path.replace('.csv', '_temp.xlsx')
+    with pd.ExcelWriter(temp_excel_path, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Sheet1', index=False)
+    print("Almost done...")
+
+    # Convert the temporary Excel file to XLSB using Excel via COM
+    excel = win32.gencache.EnsureDispatch('Excel.Application')
+    excel.DisplayAlerts = False  # Disable any prompts
+    try:
+        wb = excel.Workbooks.Open(temp_excel_path)
+        wb.SaveAs(xlsb_file_path, FileFormat=50)  # 50 is the FileFormat for XLSB
+        wb.Close()
+        print(f"XLSB file {xlsb_file_path} saved successfully.")
+    finally:
+        excel.Application.Quit()
+
+    # Clean up the temporary Excel file
+    try:
+        os.remove(temp_excel_path)
+        print(f"Temporary file {temp_excel_path} removed successfully.")
+    except PermissionError:
+        print(f"PermissionError: Could not remove temporary file. Please delete manually: {temp_excel_path}")
+        
 # Function to split the DataFrame into chunks
 def split_dataframe(df, chunk_size):
     chunks = []
@@ -77,29 +112,26 @@ if len(df) > max_rows:
 else:
     df_chunks = [df]
 
-# Write each chunk to a separate sheet in a temporary Excel file using xlsxwriter
-with pd.ExcelWriter(temp_excel_path, engine='xlsxwriter') as writer:
-    for i, chunk in enumerate(tqdm(df_chunks, desc="Writing to Excel Binary Workbook", unit="sheet")):
-        chunk.to_excel(writer, sheet_name=f'Sheet{i+1}', index=False)
-print("Finishing the output...")
-        
-# Convert the temporary Excel file to XLSB using Excel via COM
-excel = win32.gencache.EnsureDispatch('Excel.Application')
-wb = excel.Workbooks.Open(temp_excel_path)
-wb.SaveAs(xlsb_file_path, FileFormat=50)  # 50 is the FileFormat for XLSB
-wb.Close()
-excel.Application.Quit()
+df_chunks = split_dataframe(df, max_rows)
+csv_files = []
+for i, chunk in enumerate(df_chunks):
+    chunk_file_path = os.path.join(directory_path, f'{base_name}_part{i+1}.csv')
+    chunk.to_csv(chunk_file_path, index=False, header=False)
+    csv_files.append(chunk_file_path)
+    print(f"CSV part {i+1} saved to {chunk_file_path}")
 
-print("Removing the temp file...")
-# Ensure the Excel process is properly closed before attempting to delete the temp file
-time.sleep(5)
+# Convert each CSV file to XLSB
+for csv_file_path in csv_files:
+    xlsb_file_path = csv_file_path.replace('.csv', '.xlsb')
+    xlsb_file_path = os.path.normpath(xlsb_file_path)
+    save_to_xlsb(csv_file_path, xlsb_file_path)
 
-# Clean up the temporary Excel file
-try:
-    os.remove(temp_excel_path)
-    os.remove(csv_file_path)
-    print("Temporary files removed successfully.")
-except PermissionError:
-    print(f"PermissionError: Could not remove temporary files. Please delete manually: {temp_excel_path}, {csv_file_path}")
+# Clean up the CSV files
+for csv_file_path in csv_files:
+    try:
+        os.remove(csv_file_path)
+        print(f"CSV file {csv_file_path} removed successfully.")
+    except PermissionError:
+        print(f"PermissionError: Could not remove CSV file. Please delete manually: {csv_file_path}")
 
-print("CSV has been converted to XLSB successfully.")
+print("All CSV files have been converted to XLSB successfully.")
